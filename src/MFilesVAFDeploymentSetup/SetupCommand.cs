@@ -104,12 +104,13 @@ namespace MFilesVAFDeploymentSetup
             ThreadHelper.ThrowIfNotOnUIThread();
 
             // Try to get csproj file
-            var csprojFilePath = GetCsprojFile();
-            if (string.IsNullOrWhiteSpace(csprojFilePath))
+            string error = null;
+            var path = GetCsprojFile(out error);
+            if (string.IsNullOrWhiteSpace(path))
             {
                 VsShellUtilities.ShowMessageBox(
                     package,
-                    "No valid project file selected in Solution Explorer.",
+                    error,
                     "Error loading VAF application project!",
                     OLEMSGICON.OLEMSGICON_WARNING,
                     OLEMSGBUTTON.OLEMSGBUTTON_OK,
@@ -117,9 +118,23 @@ namespace MFilesVAFDeploymentSetup
                 return;
             }
 
+            // Display selected project
+            var selected = VsShellUtilities.ShowMessageBox(
+                    package,
+                    path,
+                    "Setup will be generated for the following project:",
+                    OLEMSGICON.OLEMSGICON_INFO,
+                    OLEMSGBUTTON.OLEMSGBUTTON_OKCANCEL,
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_SECOND);
+
+            if (selected == 2)
+            {
+                return;
+            }
+
             try
             {
-                var root = Path.GetDirectoryName(csprojFilePath);
+                var root = Path.GetDirectoryName(path);
                 var resources = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Resources");
 
                 // Add config files
@@ -133,7 +148,7 @@ namespace MFilesVAFDeploymentSetup
                 File.WriteAllText(Path.Combine(root, "install-application.ps1"), script);
 
                 // Edit csproj file
-                var str = new StringReader(File.ReadAllText(csprojFilePath));
+                var str = new StringReader(File.ReadAllText(path));
                 var xmlReader = XmlReader.Create(str);
                 var project = ProjectRootElement.Create(xmlReader);
 
@@ -146,7 +161,7 @@ namespace MFilesVAFDeploymentSetup
                 afterBuildTarget.RemoveAllChildren();
                 AddVAFAppInstallTasks(afterBuildTarget);
 
-                project.Save(csprojFilePath);
+                project.Save(path);
             }
             catch (Exception ex)
             {
@@ -207,25 +222,78 @@ namespace MFilesVAFDeploymentSetup
             return project.Items.FirstOrDefault(t => t.Include == include) ?? project.AddItem("None", include);
         }
 
-        private string GetCsprojFile()
+        private string GetCsprojFile(out string error)
         {
-            string csprojFilePath = null;
+            // Try to get file selected in Solution Explorer
+            error = "No valid project file selected in Solution Explorer.";
+            string path = null;
             try
             {
-                csprojFilePath = GetPathOfSelectedItem();
+                path = GetPathOfSelectedItem();
             }
             catch (Exception)
             {
-
+                return null;
             }
 
-            return IsSelectedItemProjectFile(csprojFilePath) == true ? csprojFilePath : null;
+            // Csproj file selected in Solution Explorer
+            if (IsSelectedItemProjectFile(path))
+            {
+                error = null;
+                return path;
+            }
+
+            // Csproj file not selected, try to find it
+            try
+            {
+                path = GetContainingProject(path);
+            }
+            catch (Exception ex)
+            {
+                error += ex.Message;
+                path = null;
+            }
+
+            // Found csproj file
+            if (IsSelectedItemProjectFile(path))
+            {
+                error = null;
+                return path;
+            }
+
+            // Couldn't find csproj file
+            return null;
         }
 
         private bool IsSelectedItemProjectFile(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
             return path.EndsWith(".csproj");
+        }
+
+        private static string GetContainingProject(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            path = Path.GetFullPath(path);
+            var dir = Path.GetDirectoryName(path);
+            var files = Directory.GetFiles(dir, "*", SearchOption.TopDirectoryOnly);
+            try
+            {
+                var proj = files.SingleOrDefault(f => f.EndsWith(".csproj"));
+                if (proj != null)
+                {
+                    return proj;
+                }
+            }
+            catch (Exception)
+            {
+                throw new Exception($"More than one .csproj file exist in {dir}.");
+            }
+            return GetContainingProject(dir);
         }
 
         private string GetPathOfSelectedItem()
@@ -246,9 +314,9 @@ namespace MFilesVAFDeploymentSetup
             IVsUIHierarchy uiHierarchy = hierarchy as IVsUIHierarchy;
 
             // Get the file path
-            string projFilePath = null;
-            ((IVsProject)hierarchy).GetMkDocument(itemid, out projFilePath);
-            return projFilePath;
+            string filePath = null;
+            ((IVsProject)hierarchy).GetMkDocument(itemid, out filePath);
+            return filePath;
         }
 
     }
