@@ -118,50 +118,25 @@ namespace MFilesVAFDeploymentSetup
                 return;
             }
 
-            // Display selected project
-            var selected = VsShellUtilities.ShowMessageBox(
+            // Display confirmation dialog
+            if (VsShellUtilities.ShowMessageBox(
                     package,
                     path,
                     "Setup will be generated for the following project:",
                     OLEMSGICON.OLEMSGICON_INFO,
                     OLEMSGBUTTON.OLEMSGBUTTON_OKCANCEL,
-                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_SECOND);
-
-            if (selected == 2)
+                    OLEMSGDEFBUTTON.OLEMSGDEFBUTTON_SECOND) == 2)
             {
                 return;
             }
 
+            // Try to generate setup files and update project file
             try
             {
                 var root = Path.GetDirectoryName(path);
                 var resources = Path.Combine(Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location), "Resources");
-
-                // Add config files
-                var config = File.ReadAllText(Path.Combine(resources, "Template.App.config"));
-
-                File.WriteAllText(Path.Combine(root, "App.Debug.config"), config);
-                File.WriteAllText(Path.Combine(root, "App.Release.config"), config);
-
-                // Add script
-                var script = File.ReadAllText(Path.Combine(resources, "install-application.ps1"));
-                File.WriteAllText(Path.Combine(root, "install-application.ps1"), script);
-
-                // Edit csproj file
-                var str = new StringReader(File.ReadAllText(path));
-                var xmlReader = XmlReader.Create(str);
-                var project = ProjectRootElement.Create(xmlReader);
-
-                // Project Items
-                AddProjectItem(project, "App.Debug.config");
-                AddProjectItem(project, "App.Release.config");
-
-                // After Build Target
-                var afterBuildTarget = AddProjectTarget(project, "AfterBuild");
-                afterBuildTarget.RemoveAllChildren();
-                AddVAFAppInstallTasks(afterBuildTarget);
-
-                project.Save(path);
+                AddSetupFilesToProjectFolder(root, resources);
+                EditProjectFile(path);
             }
             catch (Exception ex)
             {
@@ -176,33 +151,76 @@ namespace MFilesVAFDeploymentSetup
             }
         }
 
-        private static void AddVAFAppInstallTasks(ProjectTargetElement afterBuildTarget)
+        /// <summary>
+        /// Edits project file to include generated setup files and AfterBuild event for deployment.
+        /// </summary>
+        private static void EditProjectFile(string path)
         {
-            AddTaskToTarget(afterBuildTarget, "Delete",
+            var str = new StringReader(File.ReadAllText(path));
+            var xmlReader = XmlReader.Create(str);
+            var project = ProjectRootElement.Create(xmlReader);
+
+            // Project Items
+            AddProjectItem(project, "App.Debug.config");
+            AddProjectItem(project, "App.Release.config");
+
+            // After Build Target
+            var afterBuildTarget = AddProjectTarget(project, "AfterBuild");
+            afterBuildTarget.RemoveAllChildren();
+            AddVAFAppInstallTasks(afterBuildTarget);
+
+            project.Save(path);
+        }
+
+        /// <summary>
+        /// Adds setup files to project folder.
+        /// </summary>
+        private static void AddSetupFilesToProjectFolder(string root, string resources)
+        {
+            // Add config files
+            var config = File.ReadAllText(Path.Combine(resources, "Template.App.config"));
+
+            File.WriteAllText(Path.Combine(root, "App.Debug.config"), config);
+            File.WriteAllText(Path.Combine(root, "App.Release.config"), config);
+
+            // Add script
+            var script = File.ReadAllText(Path.Combine(resources, "install-application.ps1"));
+            File.WriteAllText(Path.Combine(root, "install-application.ps1"), script);
+        }
+
+        /// <summary>
+        /// Adds VAF Application Install tasks to target.
+        /// </summary>
+        private static void AddVAFAppInstallTasks(ProjectTargetElement target)
+        {
+            AddTask(target, "Delete",
                 new KeyValuePair<string, string>("Files", @"$(TargetDir)$(TargetFileName).config"));
 
-            AddTaskToTarget(afterBuildTarget, "Copy",
+            AddTask(target, "Copy",
                 new KeyValuePair<string, string>("SourceFiles", @"$(ProjectDir)\App.$(Configuration).config"),
                 new KeyValuePair<string, string>("DestinationFiles", @"$(TargetDir)App.config"));
 
-            AddTaskToTarget(afterBuildTarget, "Delete",
+            AddTask(target, "Delete",
                 new KeyValuePair<string, string>("Files", @"bin\$(Configuration)\$(ProjectName).mfappx"));
 
-            var ciTask = AddTaskToTarget(afterBuildTarget, "CreateItem",
+            var ciTask = AddTask(target, "CreateItem",
                 new KeyValuePair<string, string>("Include", @"bin\$(Configuration)\**\*.*"));
 
             ciTask.AddOutputItem("Include", "ZipFiles");
 
-            AddTaskToTarget(afterBuildTarget, "Zip",
+            AddTask(target, "Zip",
                 new KeyValuePair<string, string>("ZipFileName", @"bin\$(Configuration)\$(ProjectName).mfappx"),
                 new KeyValuePair<string, string>("WorkingDirectory", @"$(TargetDir)"),
                 new KeyValuePair<string, string>("Files", @"@(ZipFiles)"));
 
-            AddTaskToTarget(afterBuildTarget, "Exec",
+            AddTask(target, "Exec",
                 new KeyValuePair<string, string>("Command", @"PowerShell -ExecutionPolicy Bypass -File install-application.ps1 -ConfigFile ""$(TargetDir)App.config"" -AppFilePath ""bin\$(Configuration)\$(ProjectName).mfappx"""));
         }
 
-        private static ProjectTaskElement AddTaskToTarget(ProjectTargetElement target, string name, params KeyValuePair<string, string>[] parameters)
+        /// <summary>
+        /// Adds a single task to target.
+        /// </summary>
+        private static ProjectTaskElement AddTask(ProjectTargetElement target, string name, params KeyValuePair<string, string>[] parameters)
         {
             var task = target.AddTask(name);
             foreach (var param in parameters)
@@ -212,16 +230,25 @@ namespace MFilesVAFDeploymentSetup
             return task;
         }
 
+        /// <summary>
+        /// Adds target to project.
+        /// </summary>
         private static ProjectTargetElement AddProjectTarget(ProjectRootElement project, string target)
         {
             return project.Targets.FirstOrDefault(t => t.Name == target) ?? project.AddTarget(target);
         }
 
+        /// <summary>
+        /// Adds project item to project.
+        /// </summary>
         private static ProjectItemElement AddProjectItem(ProjectRootElement project, string include)
         {
             return project.Items.FirstOrDefault(t => t.Include == include) ?? project.AddItem("None", include);
         }
 
+        /// <summary>
+        /// Tries to get csproj file that contains currently selected item in Solution Explorer.
+        /// </summary>
         private string GetCsprojFile(out string error)
         {
             // Try to get file selected in Solution Explorer
@@ -265,12 +292,18 @@ namespace MFilesVAFDeploymentSetup
             return null;
         }
 
+        /// <summary>
+        /// Checks if selected item is project file (has .csproj extension).
+        /// </summary>
         private bool IsSelectedItemProjectFile(string path)
         {
             if (string.IsNullOrWhiteSpace(path)) return false;
             return path.EndsWith(".csproj");
         }
 
+        /// <summary>
+        /// Gets project (.csproj file) that contains the specified path.
+        /// </summary>
         private static string GetContainingProject(string path)
         {
             if (string.IsNullOrWhiteSpace(path))
@@ -296,6 +329,9 @@ namespace MFilesVAFDeploymentSetup
             return GetContainingProject(dir);
         }
 
+        /// <summary>
+        /// Gets the path of currently selected item in Solution Explorer.
+        /// </summary>
         private string GetPathOfSelectedItem()
         {
             IVsUIShellOpenDocument openDocument = Package.GetGlobalService(typeof(SVsUIShellOpenDocument)) as IVsUIShellOpenDocument;
