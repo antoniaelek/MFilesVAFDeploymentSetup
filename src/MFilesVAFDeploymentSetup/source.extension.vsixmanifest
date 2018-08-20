@@ -1,7 +1,7 @@
 ﻿<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
   <Metadata>
-    <Identity Id="MFilesVAFDeploymentSetup.Company.4909c57a-5180-40bb-9cdf-de60f4834dd4" Version="1.0" Language="en-US" Publisher="Company" />
+    <Identity Id="MFilesVAFDeploymentSetup.Company.4909c57a-5180-40bb-9cdf-de60f4834dd4" Version="0.5" Language="en-US" Publisher="antoniaelek" />
     <DisplayName>M-Files VAF Deployment Setup</DisplayName>
     <Description xml:space="preserve">Setup M-Files VAF Application Deployment</Description>
     <Icon>Resources\m-files-vaf-32.ico</Icon>
