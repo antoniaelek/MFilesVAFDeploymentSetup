@@ -15,4 +15,4 @@ Settings from `App.Debug.config` file will be used to deploy VAF project when bu
 - Click **OK** to confirm the location where setup files will be generated
 - Click **Reload Solution** to display generated files in Solution Explorer
 
-![Instructions](https://github.com/antoniaelek/MFilesVAFDeploymentSetup/tree/master/resources/images/readme-1.gif)
+![Instructions](https://raw.githubusercontent.com/antoniaelek/MFilesVAFDeploymentSetup/master/resources/images/readme-1.gif?token=AMTjdYj42LFq5YJkiSRuO1fDGGoy16J8ks5bhA_cwA%3D%3D)
