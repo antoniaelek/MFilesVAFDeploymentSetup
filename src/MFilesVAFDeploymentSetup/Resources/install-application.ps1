@@ -1,13 +1,41 @@
 ﻿Param(
-	[Parameter(Mandatory=$True)][string]$ConfigFile,
-	[Parameter(Mandatory=$True)][string]$AppFilePath
+	[Parameter(Mandatory=$True)][string]$TargetDir
 )
 
-# Application details
-$appGuid = "5ccd6c17-50f9-4135-aa92-d8ac9a7333dd"
+$TargetDir =$TargetDir.TrimEnd("""")
+Write-Host ""
+Write-Host $TargetDir
+
+# Get application details
+try{
+    $appDefPath = Join-Path -Path $TargetDir -ChildPath "appdef.xml"
+    $appDef = [xml](Get-Content $appDefPath)
+    $appGuid = $appDef.application.guid
+	$mfappx = $appDef.application.'extension-objects'.'extension-object'.assembly.TrimEnd(".dll") + ".mfappx"
+	$AppFilePath = Join-Path -Path $TargetDir -ChildPath $mfappx
+}
+catch
+{
+}
+
+if (-not $appGuid)
+{
+	Write-Host "Unable to read App GUID from appdef.xml"
+	exit
+}
+
+if (-not $AppFilePath)
+{
+	Write-Host "Unable to read Assembly name from appdef.xml"
+	exit
+}
 
 # Get config
+$ConfigFile =  Join-Path -Path $TargetDir -ChildPath "App.config"
 $xml = [xml](Get-Content -Path $ConfigFile)
+
+# Deploy enabled
+[bool]$deploy = [System.Convert]::ToBoolean($xml.configuration.deploy)
 
 # Target vault
 $vaultName = $xml.configuration.vaultName
@@ -25,6 +53,7 @@ $encryptedConnection = [bool]$xml.configuration.encryptedConnection
 $localComputerName = $xml.configuration.localComputerName
 
 Write-Host "Using the following configuration from config file:" $ConfigFile
+Write-Host "  deploy:" $deploy
 Write-Host "  vaultName:" $vaultName
 Write-Host "  authType:" $authType
 Write-Host "  userName:" $userName
@@ -36,6 +65,25 @@ Write-Host "  networkAddress:" $networkAddress
 Write-Host "  endpoint:" $endpoint
 Write-Host "  encryptedConnection:" $encryptedConnection
 Write-Host "  localComputerName:" $localComputerName
+
+# If disabled, exit
+if (-not $deploy) {
+	exit
+}
+
+# If any of the andatory properties is not set, exit
+if ((-not $vaultName) -or (-not $authType) -or (-not $networkAddress) -or (-not $endpoint) -or (-not $protocolSequence))
+{
+	$missingProperties = ""
+	if(-not $vaultName) { $missingProperties = $missingProperties + "vaultName, " }
+	if(-not $authType) { $missingProperties = $missingProperties + "authType, " }
+	if(-not $networkAddress) { $missingProperties = $missingProperties + "networkAddress, " }
+	if(-not $endpoint) { $missingProperties = $missingProperties + "endpoint, " }
+	if(-not $protocolSequence) { $missingProperties = $missingProperties + "protocolSequence, " }
+    $missingProperties = $missingProperties.TrimEnd(", ")
+	Write-Host "Mandatory properties not set:" $missingProperties
+	exit
+}
 
 Write-Host "Connecting to Vault" $vaultName "on server" $networkAddress 
 
@@ -71,7 +119,10 @@ try
 	# Login to vault again.
 	$vault = $vaultOnServer.LogIn()
 }
-catch {}
+catch
+{
+    Write-Host $PSItem.ToString()
+}
 
 Write-Host "Installing application..."
 

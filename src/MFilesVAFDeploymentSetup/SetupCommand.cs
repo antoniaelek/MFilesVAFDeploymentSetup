@@ -214,7 +214,7 @@ namespace MFilesVAFDeploymentSetup
                 new KeyValuePair<string, string>("Files", @"@(ZipFiles)"));
 
             AddTask(target, "Exec",
-                new KeyValuePair<string, string>("Command", @"PowerShell -ExecutionPolicy Bypass -File install-application.ps1 -ConfigFile ""$(TargetDir)App.config"" -AppFilePath ""bin\$(Configuration)\$(ProjectName).mfappx"""));
+                new KeyValuePair<string, string>("Command", @"PowerShell -ExecutionPolicy Bypass -File install-application.ps1 -TargetDir ""$(TargetDir)"""));
         }
 
         /// <summary>
